@@ -1,0 +1,45 @@
+# Construit l'image HD-gest (Dockerfile.hd-gest) à chaque push sur une branche
+# hd-gest/*, et la publie sur ghcr.io avec un tag unique par commit :
+#   ghcr.io/heaume01/tududi:<tag amont>-hdgest.<sha court>
+name: HD-gest image
+
+on:
+  push:
+    branches: ['hd-gest/**']
+  workflow_dispatch:
+
+# Actions figées sur un commit : ce workflow publie l'image déployée en
+# production, une étiquette déplacée en amont ne doit pas pouvoir y entrer.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Tag de l'image
+        id: tag
+        run: |
+          upstream=$(sed -n 's/^ARG UPSTREAM_TAG=//p' Dockerfile.hd-gest)
+          echo "upstream=$upstream" >> "$GITHUB_OUTPUT"
+          echo "tag=$upstream-hdgest.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: Dockerfile.hd-gest
+          platforms: linux/amd64
+          build-args: UPSTREAM_TAG=${{ steps.tag.outputs.upstream }}
+          push: true
+          tags: ghcr.io/heaume01/tududi:${{ steps.tag.outputs.tag }}

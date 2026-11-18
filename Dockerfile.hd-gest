@@ -1,0 +1,29 @@
+# Image HD-gest : l'image officielle de Tududi, dont l'interface est remplacée
+# par celle de cette branche (version officielle + correctifs en attente
+# d'intégration amont), ainsi que les seuls fichiers du backend que la branche
+# modifie (liste plus bas). Les dépendances, les migrations et le script de
+# démarrage restent ceux de l'image officielle, à l'octet près.
+#
+# UPSTREAM_TAG doit correspondre au tag dont part cette branche : une interface
+# compilée sur un autre tag pourrait appeler une API que ce backend n'a pas.
+ARG UPSTREAM_TAG=2.1.0
+
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+RUN apk add --no-cache python3 make g++ bash
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY . ./
+RUN NODE_ENV=production npm run frontend:build
+
+FROM chrisvel/tududi:${UPSTREAM_TAG}
+# Mêmes copies que l'étape de production du Dockerfile amont.
+RUN rm -rf /app/backend/dist
+COPY --from=builder --chown=app:app /app/dist /app/backend/dist
+COPY --from=builder --chown=app:app /app/public/favicon* /app/backend/dist/
+COPY --from=builder --chown=app:app /app/public/manifest.json /app/backend/dist/
+COPY --from=builder --chown=app:app /app/public/locales /app/backend/dist/locales
+# Fichiers du backend modifiés par cette branche, et eux seuls : chacun doit
+# être identique entre le tag amont et la branche, à ces changements près.
+COPY --chown=app:app backend/modules/users/service.js /app/backend/modules/users/service.js
+LABEL org.opencontainers.image.source="https://github.com/Heaume01/tududi"
